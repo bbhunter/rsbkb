@@ -4,55 +4,48 @@ use anyhow::Result;
 use clap::{arg, Command};
 
 pub struct UrlEncApplet {
+    // true: should be encoded
     table: [bool; 256],
 }
 
 // Encoding table according to RFC 3986
-fn build_url_table(excluded: &String, table: &mut [bool; 256]) -> () {
+fn build_url_table(excluded: &str, table: &mut [bool; 256]) {
     for i in 0..255 {
         let c = char::from_u32(i).unwrap();
-        if !c.is_ascii_graphic() {
+        if !c.is_ascii_graphic()
+            || (!excluded.contains(c)
+                && matches!(
+                    c,
+                    '!' | '#'
+                        | '$'
+                        | '%'
+                        | '&'
+                        | '\''
+                        | '('
+                        | ')'
+                        | '*'
+                        | '+'
+                        | ','
+                        | '/'
+                        | ':'
+                        | ';'
+                        | '='
+                        | '?'
+                        | '@'
+                        | '['
+                        | ']'
+                ))
+        {
             table[i as usize] = true;
-        } else {
-            if matches!(
-                c,
-                '!' | '#'
-                    | '$'
-                    | '%'
-                    | '&'
-                    | '\''
-                    | '('
-                    | ')'
-                    | '*'
-                    | '+'
-                    | ','
-                    | '/'
-                    | ':'
-                    | ';'
-                    | '='
-                    | '?'
-                    | '@'
-                    | '['
-                    | ']'
-            ) && !excluded.contains(c)
-            {
-                table[i as usize] = true;
-            } else {
-                table[i as usize] = false;
-            }
         }
     }
 }
 
-fn build_custom_table(excluded: &String, custom: &String, table: &mut [bool; 256]) -> () {
+fn build_custom_table(excluded: &str, custom: &str, table: &mut [bool; 256]) {
     for i in 0..255 {
         let c = char::from_u32(i).unwrap();
         if custom.contains(c) {
-            if excluded.contains(c) {
-                table[i as usize] = false;
-            } else {
-                table[i as usize] = true;
-            }
+            table[i as usize] = !excluded.contains(c);
         } else {
             table[i as usize] = false;
         }
@@ -60,17 +53,13 @@ fn build_custom_table(excluded: &String, custom: &String, table: &mut [bool; 256
 }
 
 // Default is to encode non alpha-numeric (ASCII) chars
-fn build_default_table(excluded: &String, table: &mut [bool; 256]) -> () {
+fn build_default_table(excluded: &str, table: &mut [bool; 256]) {
     for i in 0..255 {
         let c = char::from_u32(i).unwrap();
         if c.is_ascii_alphanumeric() {
             table[i as usize] = false;
         } else {
-            if excluded.contains(c) {
-                table[i as usize] = false;
-            } else {
-                table[i as usize] = true;
-            }
+            table[i as usize] = !excluded.contains(c);
         }
     }
 }
@@ -111,14 +100,14 @@ impl Applet for UrlEncApplet {
         };
         let mut table = [false; 256];
         if args.get_flag("rfc3986") {
-            build_url_table(&excluded, &mut table);
+            build_url_table(excluded, &mut table);
         } else if args.contains_id("custom") {
             let custom = args.get_one::<String>("custom").unwrap();
-            build_custom_table(&excluded, &custom, &mut table);
+            build_custom_table(excluded, custom, &mut table);
         } else {
-            build_default_table(&excluded, &mut table);
+            build_default_table(excluded, &mut table);
         };
-        Ok(Box::new(Self { table: table }))
+        Ok(Box::new(Self { table }))
     }
 
     fn process(&self, val: Vec<u8>) -> Result<Vec<u8>> {
